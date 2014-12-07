@@ -4,7 +4,9 @@ use 5.008008;
 use strict;
 use warnings;
 
-our $VERSION = '0.06';
+our $VERSION = '0.07';
+
+my $allow_new_methods = 0;
 
 sub new {
   my $package = shift;
@@ -29,6 +31,8 @@ sub initialize {
   my $module = $self->{module} . '.pm';
   $module =~ s/::/\//g;
   require $module;
+
+  $allow_new_methods = 1 if $self->{allow_new_methods};
 }
 
 sub add {
@@ -42,6 +46,14 @@ sub add {
     require Carp;
     Carp::croak("No method name provided to mock") unless $name;
     Carp::croak("No sub ref provided to mock") unless $sub;
+  }
+
+  if (!$allow_new_methods) {
+      use Erik;
+      Erik::stackTrace;
+      Erik::vars(module => $self->{module}, name => $name);
+      die("Module (" . $self->{module} . ") does not have a method named '$name'\n")
+        unless $self->{module}->can($name);
   }
 
   {
@@ -77,16 +89,24 @@ Test::Mock::Simple - A simple way to mock out parts of or a whole module.
 
 =head1 DESCRIPTION
 
-This is a simple way of overriding any number of methods for a give object/class.
+This is a simple way of overriding any number of methods for a given object/class.
 
 Can be used directly in test (or any) files, but best practice (IMHO) is to
-create a 'Mock' module and using it instead of directly using the module in your
-tests. The goal is to write a test which passes whether you're Mocking or not.
-See TEST_MOCK_SIMPLE_DISABLE below.
+create a 'Mock' module and using it instead of directly using the module in any
+tests. The goal is to write a test which passes whether Mocking is being used or
+not. See TEST_MOCK_SIMPLE_DISABLE below.
+
+The default behavior is to not allow adding methods that do not exist.  This
+should stop mistyped method names when attempting to mock existing methods.
+See allow_new_methods below to change this behavior.
 
 Why another Mock module?  I needed something simple with no bells or whistles
 that only overrode certain methods of a given module. It's more work, but there
 aren't any conflicts.
+
+This module can not do anything about BEGIN, END, or other special name code
+blocks.  To changes these see B's (The Perl Compiler Backend) begin_av, end_av,
+etc. methods.
 
 =head3 Environmental Variables
 
@@ -94,7 +114,7 @@ aren't any conflicts.
 
 =item TEST_MOCK_SIMPLE_DISABLE
 
-If set to true (preferably 1) then a 'add' is disabled.
+If set to true (preferably 1) then 'add' is disabled.
 
 =back
 
@@ -110,14 +130,28 @@ Create a new mock simple object.
 
 =item module
 
-The name of the module that is being mocked.  The module will be loaded first
-so that when you get around to mocking things they will override the module.
+The name of the module that is being mocked.  The module will be loaded
+immediately (by requiring it).
+
+NOTE: since require is being used to load the module it's import method is not
+being called.  This may change in later versions.
+
+=back
+
+=over 4
+
+=item allow_new_methods
+
+To create methods that do not exist in the module that is being mocked.
+
+The default behavior is to not allow adding methods that do not exist.  This
+should stop mistyping method names when attempting to mock existing methods.
 
 =back
 
 =item add
 
-This allows you to specify a new method (subroutine) that will override the
+This allows for the creation of a new method (subroutine) that will override the
 existing one. Think of it as 'add'ing a mocked method to override the existing
 one.
 
